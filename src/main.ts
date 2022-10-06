@@ -2,8 +2,9 @@ import { addIcon, App, Editor, MarkdownView, Modal, normalizePath, Notice, Plugi
 
 import { DEFAULT_SETTINGS, NotionConnectorSettings } from "./settings/settings"
 import { NotionConnectorSettingTab } from "./settings/notionConnectorSettingsTab"
+import { fetchUsingObsidianRequest } from './helpers';
+
 import { Client, collectPaginatedAPI } from '@notionhq/client';
-import { request } from 'http';
 
 
 export default class NotionConnectorPlugin extends Plugin {
@@ -21,7 +22,8 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		// Test notion integration
 		const ribbonIconEl = this.addRibbonIcon('notion', 'Notion Plugin', (evt: MouseEvent) => {
-			collectPaginatedAPI(this.notion.search, {}).then(results => new Notice(results.join("; ")))
+			collectPaginatedAPI(this.notion.search, {}).then(
+				results => new Notice(results.map(r => r.id).join("; ")))
 		});
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
@@ -74,12 +76,12 @@ export default class NotionConnectorPlugin extends Plugin {
 		// Using this function will automatically remove the event listener when this plugin is disabled.
 		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
 			console.log('click', evt);
-		});
+		}); 
 
 		// Initializing the Notion client
 		this.notion = new Client({
 			auth: this.settings.apiToken,
-			fetch: fetch,
+			fetch: fetchUsingObsidianRequest,
 		})
 	}
 
