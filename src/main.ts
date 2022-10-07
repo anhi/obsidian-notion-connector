@@ -3,6 +3,7 @@ import { addIcon, App, Editor, MarkdownView, Modal, normalizePath, Plugin, TFile
 import { DEFAULT_SETTINGS, NotionConnectorSettings } from "./settings/settings"
 import { NotionConnectorSettingTab } from "./settings/notionConnectorSettingsTab"
 import { fetchUsingObsidianRequest } from './helpers';
+import { FrontMatterHandler } from './frontMatterHandler';
 
 import { Client } from '@notionhq/client';
 
@@ -12,21 +13,12 @@ export default class NotionConnectorPlugin extends Plugin {
 	logoPath: string
 
 
-	getNotionIdFromFile(file: TFile): string {
-		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter
+	async addFrontMatter(file: TFile, key: string, value: string) {
+		const frontMatterHandler = new FrontMatterHandler(this.app.vault, this.app.metadataCache, file)
 
-		if (frontmatter) {
-			return frontmatter["notion-id"]
-		}
-		return ""
-	}
+		frontMatterHandler.set(key, value)
 
-	addFrontMatter(file: TFile, key: string, value: string) {
-		let frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter
-
-		if (!frontmatter) {
-			
-		}
+		await frontMatterHandler.apply()
 	}
 
 	async syncCurrentPageWithNotion() {
@@ -36,21 +28,54 @@ export default class NotionConnectorPlugin extends Plugin {
 			return;
 		}
 
+		const frontMatterHandler = new FrontMatterHandler(this.app.vault, this.app.metadataCache, file)
 
+		const notionId = frontMatterHandler.get("notion-id")
+		let notionType = frontMatterHandler.get("notion-type", undefined)
 
-		const notionId = this.getNotionIdFromFile(file)
+		// retrieve page or db with the given id
+		let notionItem = undefined;
+		
+		if (!notionType || notionType == "page") {
+			notionItem = await this.notion.pages.retrieve({page_id: notionId})
+				.then(response => {
+					return response
+				})
+				.catch(reason => {
+					return undefined;
+				})
+		}
 
-		// is it a page?
-		this.notion.pages.retrieve({page_id: notionId})
-			.then(response => {
-				console.log(response)
-			})
-			.catch(reason => {})
+		if (!notionItem && notionType != "page") {
+			notionItem = notionItem 
+				?? await this.notion.databases.retrieve({database_id: notionId})
+					.then(response => {
+						return response
+					})
+					.catch(reason => {
+						return null
+					})
+		}
 
-		// is it a database?
-		this.notion.databases.retrieve({database_id: notionId})
-			.then(response => console.log(response))
-			.catch(reason => console.log(reason))
+		if (!notionItem) {
+			console.warn("Could not sync with notion!")
+			return
+		}
+
+		const notionLastUpdate = 'last_edited_time' in notionItem 
+			? window.moment(notionItem['last_edited_time'], 'YYYY-MM-DDTHH:mm:ss:SSS[Z]')
+			: undefined
+
+		const syncTime = window.moment()
+
+		console.log((notionLastUpdate && notionLastUpdate < syncTime) ? "in sync" : "update needed")
+
+		notionType = notionItem["object"]
+		frontMatterHandler.set("notion-type", notionType)
+		frontMatterHandler.set("notion-last-sync-time", syncTime.format('YYYY-MM-DDTHH:mm:ss:SSS[Z]'))
+		frontMatterHandler.apply()
+	
+		console.log(notionItem)
 	}
 	
 
