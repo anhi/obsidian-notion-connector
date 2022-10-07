@@ -1,16 +1,58 @@
-import { addIcon, App, Editor, MarkdownView, Modal, normalizePath, Notice, Plugin } from 'obsidian';
+import { addIcon, App, Editor, MarkdownView, Modal, normalizePath, Plugin, TFile } from 'obsidian';
 
 import { DEFAULT_SETTINGS, NotionConnectorSettings } from "./settings/settings"
 import { NotionConnectorSettingTab } from "./settings/notionConnectorSettingsTab"
 import { fetchUsingObsidianRequest } from './helpers';
 
-import { Client, collectPaginatedAPI } from '@notionhq/client';
-
+import { Client } from '@notionhq/client';
 
 export default class NotionConnectorPlugin extends Plugin {
 	settings: NotionConnectorSettings;
 	notion: Client;
 	logoPath: string
+
+
+	getNotionIdFromFile(file: TFile): string {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter
+
+		if (frontmatter) {
+			return frontmatter["notion-id"]
+		}
+		return ""
+	}
+
+	addFrontMatter(file: TFile, key: string, value: string) {
+		let frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter
+
+		if (!frontmatter) {
+			
+		}
+	}
+
+	async syncCurrentPageWithNotion() {
+		const file = this.app.workspace.getActiveFile()
+
+		if (!file) {
+			return;
+		}
+
+
+
+		const notionId = this.getNotionIdFromFile(file)
+
+		// is it a page?
+		this.notion.pages.retrieve({page_id: notionId})
+			.then(response => {
+				console.log(response)
+			})
+			.catch(reason => {})
+
+		// is it a database?
+		this.notion.databases.retrieve({database_id: notionId})
+			.then(response => console.log(response))
+			.catch(reason => console.log(reason))
+	}
+	
 
 	async onload() {
 		await this.loadSettings();
@@ -22,9 +64,9 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		// Test notion integration
 		const ribbonIconEl = this.addRibbonIcon('notion', 'Notion Plugin', (evt: MouseEvent) => {
-			collectPaginatedAPI(this.notion.search, {}).then(
-				results => new Notice(results.map(r => r.id).join("; ")))
+			this.syncCurrentPageWithNotion();
 		});
+
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
@@ -42,11 +84,13 @@ export default class NotionConnectorPlugin extends Plugin {
 		});
 		// This adds an editor command that can perform some operation on the current editor instance
 		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
+			id: 'sync-current-file-with-notion',
+			name: 'Sync current file with notion',
 			editorCallback: (editor: Editor, view: MarkdownView) => {
+				this.syncCurrentPageWithNotion();
+
 				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
+				//editor.replaceSelection('Sample Editor Command');
 			}
 		});
 		// This adds a complex command that can check whether the current state of the app allows execution of the command
@@ -71,12 +115,6 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new NotionConnectorSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		}); 
 
 		// Initializing the Notion client
 		this.notion = new Client({
