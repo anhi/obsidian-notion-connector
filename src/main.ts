@@ -5,7 +5,8 @@ import { NotionConnectorSettingTab } from "./settings/notionConnectorSettingsTab
 import { fetchUsingObsidianRequest } from './helpers';
 import { FrontMatterHandler } from './frontMatterHandler';
 
-import { Client } from '@notionhq/client';
+import { Client, isFullDatabase, isFullPage } from '@notionhq/client';
+import { DatabaseObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
 export default class NotionConnectorPlugin extends Plugin {
 	settings: NotionConnectorSettings;
@@ -19,6 +20,27 @@ export default class NotionConnectorPlugin extends Plugin {
 		frontMatterHandler.set(key, value)
 
 		await frontMatterHandler.apply()
+	}
+	
+	notionDatabaseToMarkdown(notionDb: DatabaseObjectResponse) {
+		const title = notionDb.title[0].plain_text
+
+		let result = "---\ndatabase-plugin: basic\n---\n\n"
+
+		result += "%% dbfolder:yaml\n"
+		result += `name:${title}\n`
+		result += "description:\n" // todo: parse description from notion item
+		result += "columns:\n"
+
+		
+		// iterate over the columns
+		for (const [columnName, columnProperties] of Object.entries(notionDb.properties)) {
+			result += `\t${columnName}:\n`
+			
+		}
+
+		// get the entries for this database
+		return result
 	}
 
 	async syncCurrentPageWithNotion() {
@@ -50,6 +72,9 @@ export default class NotionConnectorPlugin extends Plugin {
 			notionItem = notionItem 
 				?? await this.notion.databases.retrieve({database_id: notionId})
 					.then(response => {
+						if (isFullDatabase(response)) {
+							console.warn(this.notionDatabaseToMarkdown(response))
+						}
 						return response
 					})
 					.catch(reason => {
@@ -73,6 +98,7 @@ export default class NotionConnectorPlugin extends Plugin {
 		notionType = notionItem["object"]
 		frontMatterHandler.set("notion-type", notionType)
 		frontMatterHandler.set("notion-last-sync-time", syncTime.format('YYYY-MM-DDTHH:mm:ss:SSS[Z]'))
+
 		frontMatterHandler.apply()
 	
 		console.log(notionItem)

@@ -1,4 +1,4 @@
-import { RequestUrlParam } from "obsidian";
+import { RequestUrlParam, request } from "obsidian";
 
 export { fetchUsingObsidianRequest };
 
