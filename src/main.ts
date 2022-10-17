@@ -5,7 +5,7 @@ import { NotionConnectorSettingTab } from "./settings/notionConnectorSettingsTab
 import { fetchUsingObsidianRequest } from './helpers';
 import { FrontMatterHandler } from './frontMatterHandler';
 
-import { Client, isFullDatabase, isFullPage } from '@notionhq/client';
+import { Client, isFullDatabase, isFullPage, isFullUser } from '@notionhq/client';
 import { DatabaseObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
 export default class NotionConnectorPlugin extends Plugin {
@@ -22,14 +22,14 @@ export default class NotionConnectorPlugin extends Plugin {
 		await frontMatterHandler.apply()
 	}
 	
-	notionDatabaseToMarkdown(notionDb: DatabaseObjectResponse) {
+	notionDatabaseToMarkdown(notionDb: DatabaseObjectResponse, file: TFile, frontMatterHandler: FrontMatterHandler) {
 		const title = notionDb.title[0].plain_text
 
-		let result = "---\ndatabase-plugin: basic\n---\n\n"
+		frontMatterHandler.set("database-plugin", "basic")
 
-		result += `#${notionDb.title[0].plain_text}`
+		let result = `# ${notionDb.title[0].plain_text}\n\n`
 
-		result += "%%%% dbfolder:yaml\n"
+		result += "%% dbfolder:yaml\n"
 		result += `name: ${title}\n`
 		result += "description:\n" // todo: parse description from notion item
 		result += "columns:\n"
@@ -41,7 +41,7 @@ export default class NotionConnectorPlugin extends Plugin {
 			result += `  ${columnName}:\n`
 			result += `    key: ${columnName}\n`
 			result += `    input: text\n` // todo: switch based on type
-			result += `    accessorKey: \\"${columnProperties.id}\\"\n` // todo: is this correct?
+			result += `    accessorKey: ${Buffer.from(columnProperties.id).toString('base64')}\n` // todo: is this correct?
 			result += `    label: ${columnName}\n`
 			result += `    position: ${position++}\n`
 			result += `    skipPersist: false\n`
@@ -53,14 +53,53 @@ export default class NotionConnectorPlugin extends Plugin {
 			result += `      media_height: 100\n`
 			result += `      isInline: false\n`			
 		}
-		result += `%%%%\n`
+
+		result += `filters:\n`
+		result += `  enabled: false\n`
+		result += `  conditions:\n`
+		result += `config:\n`
+		result += `  remove_field_when_delete_column: false\n`
+		result += `  cell_size: normal\n`
+		result += `  sticky_first_column: false\n`
+		result += `  group_folder_column: \n`
+		result += `  remove_empty_folders: false\n`
+		result += `  automatically_group_files: false\n`
+		result += `  hoist_files_with_empty_attributes: true\n`
+		result += `  show_metadata_created: true\n`
+		result += `  show_metadata_modified: true\n`
+		result += `  show_metadata_tasks: true\n`
+		result += `  show_metadata_inlinks: true\n`
+		result += `  show_metadata_outlinks: true\n`
+		result += `  source_data: query\n`
+		result += `  source_form_result: FROM ${file.parent.path}/${file.basename}-entries\n`
+		result += `  source_destination_path: ${file.parent.path}/${file.basename}-entries\n`
+		result += `  frontmatter_quote_wrap: false\n`
+		result += `  row_templates_folder: /\n`
+		result += `  current_row_template: \n`
+		result += `  pagination_size: 10\n`
+		result += `  enable_js_formulas: true\n`
+		result += `  formula_folder_path: /\n`
+		result += `  inline_default: false\n`
+		result += `  inline_new_position: top\n`
+		result += `  date_format: yyyy-MM-dd\n`
+		result += `  datetime_format: yyyy-MM-dd HH:mm:ss\n`
+
+		result += `%%\n`
 
 		// get the entries for this database
 		return result
 	}
 
-	async notionDatabaseToTasks(notionDb: DatabaseObjectResponse) {
-		let result = `#${notionDb.title[0].plain_text}`
+	async syncDatabaseEntries(notionDb: DatabaseObjectResponse, file: TFile) {
+		const itemDir = file.parent.path + `/${file.basename}-entries`
+		
+		await this.app.vault.adapter.exists(itemDir)
+			.then(result => {
+					if (!result) {
+						return this.app.vault.createFolder(itemDir)
+					}
+				}
+			)
 
 		const dbPages = await this.notion.databases.query({
 			database_id: notionDb.id
@@ -71,14 +110,37 @@ export default class NotionConnectorPlugin extends Plugin {
 				continue
 			}
 
+			let content = `---notion-item: ${dbPage.id}\n`
+			content += `notion-sync-time: ${window.moment.format('YYYY-MM-DDTHH:mm:ss:SSS[Z]')}\n`
+			content += `---\n`
+
+			Object.entries(dbPage.properties).forEach(
+				([key, value]) => {
+					content += key + ":: "
+
+					switch (value.type) {
+						case "people":
+							content += value.people.map(x => isFullUser(x) ? `[[${x}]]` : "").join(",")
+							break
+					}
+				}
+			);
+
+			const itemFileName = `${itemDir}/${dbPage.id}.md`
+			await this.app.vault.adapter.exists(itemFileName)
+				.then(result => {
+					if (!result) {
+						return this.app.vault.create(itemFileName, content)
+					} else {
+						return this.app.vault.adapter.write(itemFileName, content).then(() => {return new TFile()})
+					}
+				})
+
 			console.log(dbPage)
 		}
-
-		// get the entries for this database
-		return result
 	}
 
-	async syncCurrentPageWithNotion() {
+	async syncCurrentPageWithNotion(editor: Editor) {
 		const file = this.app.workspace.getActiveFile()
 
 		if (!file) {
@@ -108,13 +170,17 @@ export default class NotionConnectorPlugin extends Plugin {
 				?? await this.notion.databases.retrieve({database_id: notionId})
 					.then(response => {
 						if (isFullDatabase(response)) {
-							console.warn(this.notionDatabaseToMarkdown(response))
+							editor.replaceSelection(this.notionDatabaseToMarkdown(response, file, frontMatterHandler))
 						}
 						return response
 					})
 					.catch(reason => {
 						return null
 					})
+
+			if (notionItem && isFullDatabase(notionItem)) {
+				await this.syncDatabaseEntries(notionItem, file)
+			}
 		}
 
 		if (!notionItem) {
@@ -150,7 +216,7 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		// Test notion integration
 		const ribbonIconEl = this.addRibbonIcon('notion', 'Notion Plugin', (evt: MouseEvent) => {
-			this.syncCurrentPageWithNotion();
+			this.app.commands.executeCommandById('obsidian-notion-connector:sync-current-file-with-notion');
 		});
 
 		// Perform additional things with the ribbon
@@ -173,10 +239,7 @@ export default class NotionConnectorPlugin extends Plugin {
 			id: 'sync-current-file-with-notion',
 			name: 'Sync current file with notion',
 			editorCallback: (editor: Editor, view: MarkdownView) => {
-				this.syncCurrentPageWithNotion();
-
-				console.log(editor.getSelection());
-				//editor.replaceSelection('Sample Editor Command');
+				this.syncCurrentPageWithNotion(editor);
 			}
 		});
 		// This adds a complex command that can check whether the current state of the app allows execution of the command
