@@ -27,16 +27,51 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		let result = "---\ndatabase-plugin: basic\n---\n\n"
 
-		result += "%% dbfolder:yaml\n"
-		result += `name:${title}\n`
+		result += `#${notionDb.title[0].plain_text}`
+
+		result += "%%%% dbfolder:yaml\n"
+		result += `name: ${title}\n`
 		result += "description:\n" // todo: parse description from notion item
 		result += "columns:\n"
 
 		
 		// iterate over the columns
+		let position = 0
 		for (const [columnName, columnProperties] of Object.entries(notionDb.properties)) {
-			result += `\t${columnName}:\n`
-			
+			result += `  ${columnName}:\n`
+			result += `    key: ${columnName}\n`
+			result += `    input: text\n` // todo: switch based on type
+			result += `    accessorKey: \\"${columnProperties.id}\\"\n` // todo: is this correct?
+			result += `    label: ${columnName}\n`
+			result += `    position: ${position++}\n`
+			result += `    skipPersist: false\n`
+			result += `    isHidden: false\n`
+			result += `    sortIndex: -1\n`
+			result += `    config:\n`
+			result += `      enable_media_view: true\n`
+			result += `      media_width: 80\n`
+			result += `      media_height: 100\n`
+			result += `      isInline: false\n`			
+		}
+		result += `%%%%\n`
+
+		// get the entries for this database
+		return result
+	}
+
+	async notionDatabaseToTasks(notionDb: DatabaseObjectResponse) {
+		let result = `#${notionDb.title[0].plain_text}`
+
+		const dbPages = await this.notion.databases.query({
+			database_id: notionDb.id
+		})
+
+		for (const dbPage of dbPages.results) {
+			if (!isFullPage(dbPage)) {
+				continue
+			}
+
+			console.log(dbPage)
 		}
 
 		// get the entries for this database
