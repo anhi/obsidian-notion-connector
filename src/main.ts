@@ -27,7 +27,7 @@ export default class NotionConnectorPlugin extends Plugin {
 	async pageToMarkdown(page: PageObjectResponse) {
 		const md = await this.n2m.pageToMarkdown(page.id)
 			.then(mdblocks => {
-				this.n2m.toMarkdownString(mdblocks)
+				return this.n2m.toMarkdownString(mdblocks)
 			})
 		
 		return md
@@ -139,6 +139,10 @@ export default class NotionConnectorPlugin extends Plugin {
 			content += `notion-item: ${dbPage.id}\n`
 			content += `notion-sync-time: ${window.moment().format('YYYY-MM-DDTHH:mm:ss:SSS[Z]')}\n`
 
+			let title = ""
+			let dueDate = ""
+			let date = ""
+
 			Object.entries(dbPage.properties).forEach(
 				([key, value]) => {
 					content += key.replace(/ /g, "-") + ": "
@@ -154,13 +158,20 @@ export default class NotionConnectorPlugin extends Plugin {
 							content += value.created_time
 							break
 						case "date":
-							content += value.date?.start ? value.date?.start : ""
-							content += (value.date?.start && value.date?.end) ? " -- " : ""
-							content += value.date?.end ? value.date?.end : ""
-							content += value.date?.time_zone ? " " + value.date?.time_zone : ""
+							date = value.date?.start ? value.date?.start : ""
+							date += (value.date?.start && value.date?.end) ? " -- " : ""
+							date += value.date?.end ? value.date?.end : ""
+							date += value.date?.time_zone ? " " + value.date?.time_zone : ""
+
+							content += date
+
+							if (key == "Due Date") {
+								dueDate = date
+							}
 							break
 						case "title":
-							content += value.title.map(t => this.n2m.annotatePlainText(t.plain_text, t.annotations)).join(" ")
+							title = value.title.map(t => this.n2m.annotatePlainText(t.plain_text, t.annotations)).join(" ")
+							content += title
 							break
 					}
 
@@ -171,6 +182,19 @@ export default class NotionConnectorPlugin extends Plugin {
 			content += `---\n`
 
 			content += await this.pageToMarkdown(dbPage)
+
+			if ("Complete" in dbPage.properties && "checkbox" in dbPage.properties.Complete) {
+				content += `\n - [${dbPage.properties.Complete.checkbox ? "x" : " "}]`
+				content += ` ${title} `
+
+				if ("Priority" in dbPage.properties && "select" in dbPage.properties.Priority) {
+					content += dbPage.properties.Priority.select?.name + " "
+				}
+				if (dueDate) {
+					content += '📅 ' + dueDate 
+				}
+				content += "\n"
+			}
 
 			const itemFileName = `${itemDir}/${dbPage.id}.md`
 			const fileExists = await this.app.vault.adapter.exists(itemFileName)
@@ -215,7 +239,6 @@ export default class NotionConnectorPlugin extends Plugin {
 				?? await this.notion.databases.retrieve({database_id: notionId})
 					.then(response => {
 						if (isFullDatabase(response)) {
-							console.log(response)
 							editor.replaceSelection(this.notionDatabaseToMarkdown(response, file, frontMatterHandler))
 						}
 						return response
@@ -268,43 +291,12 @@ export default class NotionConnectorPlugin extends Plugin {
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
-
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
 		// This adds an editor command that can perform some operation on the current editor instance
 		this.addCommand({
 			id: 'sync-current-file-with-notion',
 			name: 'Sync current file with notion',
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				this.syncCurrentPageWithNotion(editor);
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
 			}
 		});
 
@@ -333,21 +325,5 @@ export default class NotionConnectorPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
 	}
 }
