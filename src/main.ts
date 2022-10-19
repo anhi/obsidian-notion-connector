@@ -205,7 +205,7 @@ export default class NotionConnectorPlugin extends Plugin {
 				await this.app.vault.adapter.write(itemFileName, content)
 			}
 
-			console.log(dbPage)
+			//console.log(dbPage)
 		}
 	}
 
@@ -226,12 +226,16 @@ export default class NotionConnectorPlugin extends Plugin {
 		
 		if (!notionType || notionType == "page") {
 			notionItem = await this.notion.pages.retrieve({page_id: notionId})
-				.then(response => {
-					return response
-				})
 				.catch(reason => {
 					return undefined;
 				})
+			
+			if (notionItem && isFullPage(notionItem)) {
+				await this.pageToMarkdown(notionItem)
+					.then(md => {
+						editor.replaceSelection(md)
+					})
+				}
 		}
 
 		if (!notionItem && notionType != "page") {
@@ -271,7 +275,7 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		frontMatterHandler.apply()
 	
-		console.log(notionItem)
+		//console.log(notionItem)
 	}
 	
 
