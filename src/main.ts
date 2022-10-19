@@ -6,11 +6,13 @@ import { fetchUsingObsidianRequest } from './helpers';
 import { FrontMatterHandler } from './frontMatterHandler';
 
 import { Client, isFullDatabase, isFullPage, isFullUser } from '@notionhq/client';
-import { DatabaseObjectResponse } from '@notionhq/client/build/src/api-endpoints';
+import { DatabaseObjectResponse, PageObjectResponse, SelectPropertyResponse } from '@notionhq/client/build/src/api-endpoints';
+import { NotionToMarkdown } from 'notion-to-md';
 
 export default class NotionConnectorPlugin extends Plugin {
 	settings: NotionConnectorSettings;
 	notion: Client;
+	n2m: NotionToMarkdown;
 	logoPath: string
 
 
@@ -21,6 +23,20 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		await frontMatterHandler.apply()
 	}
+
+	async pageToMarkdown(page: PageObjectResponse) {
+		const md = await this.n2m.pageToMarkdown(page.id)
+			.then(mdblocks => {
+				this.n2m.toMarkdownString(mdblocks)
+			})
+		
+		return md
+	}
+
+	formatOptions(options: SelectPropertyResponse[]) {
+		return ("    " + options.map(o => `- { label: "${o.name}", backgroundColor: "${o.color}" }`).join("\n    "))
+	}
+	
 	
 	notionDatabaseToMarkdown(notionDb: DatabaseObjectResponse, file: TFile, frontMatterHandler: FrontMatterHandler) {
 		const title = notionDb.title[0].plain_text
@@ -33,14 +49,23 @@ export default class NotionConnectorPlugin extends Plugin {
 		result += `name: ${title}\n`
 		result += "description:\n" // todo: parse description from notion item
 		result += "columns:\n"
-
 		
 		// iterate over the columns
 		let position = 0
 		for (const [columnName, columnProperties] of Object.entries(notionDb.properties)) {
 			result += `  ${columnName}:\n`
-			result += `    key: ${columnName}\n`
-			result += `    input: text\n` // todo: switch based on type
+			result += `    key: ${columnName.replace(/ /g, "-")}\n`
+			
+			if (columnProperties.type == "select") {
+				result += `    input: select\n` // todo: switch based on type
+				result += `    options:\n` + this.formatOptions(columnProperties.select.options) + "\n"
+			} else if (columnProperties.type == "multi_select") {
+				result += `    input: tags\n` // todo: switch based on type
+				result += `    options:\n` + this.formatOptions(columnProperties.multi_select.options) + "\n"
+			} else {
+				result += `    input: text\n`
+			}
+
 			result += `    accessorKey: ${Buffer.from(columnProperties.id).toString('base64')}\n` // todo: is this correct?
 			result += `    label: ${columnName}\n`
 			result += `    position: ${position++}\n`
@@ -71,8 +96,8 @@ export default class NotionConnectorPlugin extends Plugin {
 		result += `  show_metadata_inlinks: true\n`
 		result += `  show_metadata_outlinks: true\n`
 		result += `  source_data: query\n`
-		result += `  source_form_result: FROM ${file.parent.path}/${file.basename}-entries\n`
-		result += `  source_destination_path: ${file.parent.path}/${file.basename}-entries\n`
+		result += `  source_form_result: FROM "${file.parent.path ? file.parent.path.replace(/^\//, "")  : ""}${file.basename}-entries"\n`
+		result += `  source_destination_path: "${file.parent.path ? file.parent.path.replace(/^\//, "")  : ""}${file.basename}-entries"\n`
 		result += `  frontmatter_quote_wrap: false\n`
 		result += `  row_templates_folder: /\n`
 		result += `  current_row_template: \n`
@@ -110,31 +135,51 @@ export default class NotionConnectorPlugin extends Plugin {
 				continue
 			}
 
-			let content = `---notion-item: ${dbPage.id}\n`
-			content += `notion-sync-time: ${window.moment.format('YYYY-MM-DDTHH:mm:ss:SSS[Z]')}\n`
-			content += `---\n`
+			let content = `---\n`
+			content += `notion-item: ${dbPage.id}\n`
+			content += `notion-sync-time: ${window.moment().format('YYYY-MM-DDTHH:mm:ss:SSS[Z]')}\n`
 
 			Object.entries(dbPage.properties).forEach(
 				([key, value]) => {
-					content += key + ":: "
+					content += key.replace(/ /g, "-") + ": "
 
 					switch (value.type) {
 						case "people":
-							content += value.people.map(x => isFullUser(x) ? `[[${x}]]` : "").join(",")
+							content += "\n  " + value.people.map(x => isFullUser(x) ? `- [[${x.name}]]` : "").join("\n  ") // todo: store id somewhere?
+							break
+						case "checkbox":
+							content += value.checkbox
+							break
+						case "created_time":
+							content += value.created_time
+							break
+						case "date":
+							content += value.date?.start ? value.date?.start : ""
+							content += (value.date?.start && value.date?.end) ? " -- " : ""
+							content += value.date?.end ? value.date?.end : ""
+							content += value.date?.time_zone ? " " + value.date?.time_zone : ""
+							break
+						case "title":
+							content += value.title.map(t => this.n2m.annotatePlainText(t.plain_text, t.annotations)).join(" ")
 							break
 					}
+
+					content += "\n"
 				}
 			);
 
+			content += `---\n`
+
+			content += await this.pageToMarkdown(dbPage)
+
 			const itemFileName = `${itemDir}/${dbPage.id}.md`
-			await this.app.vault.adapter.exists(itemFileName)
-				.then(result => {
-					if (!result) {
-						return this.app.vault.create(itemFileName, content)
-					} else {
-						return this.app.vault.adapter.write(itemFileName, content).then(() => {return new TFile()})
-					}
-				})
+			const fileExists = await this.app.vault.adapter.exists(itemFileName)
+
+			if (!fileExists) {
+				await this.app.vault.create(itemFileName, content)
+			} else {
+				await this.app.vault.adapter.write(itemFileName, content)
+			}
 
 			console.log(dbPage)
 		}
@@ -170,6 +215,7 @@ export default class NotionConnectorPlugin extends Plugin {
 				?? await this.notion.databases.retrieve({database_id: notionId})
 					.then(response => {
 						if (isFullDatabase(response)) {
+							console.log(response)
 							editor.replaceSelection(this.notionDatabaseToMarkdown(response, file, frontMatterHandler))
 						}
 						return response
@@ -270,6 +316,11 @@ export default class NotionConnectorPlugin extends Plugin {
 			auth: this.settings.apiToken,
 			fetch: fetchUsingObsidianRequest,
 		})
+
+		// set up notion to markdown converter
+		this.n2m = new NotionToMarkdown({ 
+			notionClient: this.notion 
+		});
 	}
 
 	onunload() {
