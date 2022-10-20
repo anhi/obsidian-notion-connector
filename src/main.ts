@@ -6,6 +6,7 @@ import { FrontMatterHandler } from './frontMatterHandler';
 
 import NotionConnector from './notionConnector';
 import DownloadFromNotionModal from './downloadFromNotionModal';
+import { notionLogo } from './notionLogo';
 
 export default class NotionConnectorPlugin extends Plugin {
 	settings: NotionConnectorSettings
@@ -27,10 +28,12 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		this.notionConnector = new NotionConnector(this.settings.apiToken, this.app)
 
-		this.logoPath = normalizePath(`${this.app.vault.configDir}/plugins/${this.manifest.id}`)
+		addIcon('notion', notionLogo)
 
-		await this.app.vault.adapter.read(`${this.logoPath}/Notion-logo.svg`)
-			.then((logo) => addIcon('notion', logo))
+		//this.logoPath = normalizePath(`${this.app.vault.configDir}/plugins/${this.manifest.id}`)
+
+		//await this.app.vault.adapter.read(`${this.logoPath}/Notion-logo.svg`)
+		//	.then((logo) => addIcon('notion', logo))
 
 		// Add icon to the side bar
 		this.addRibbonIcon('notion', 'Notion Plugin', (evt: MouseEvent) => {
