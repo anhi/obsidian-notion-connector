@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-notion-connector",
-	"version": "0.9.1",
+	"version": "0.9.2",
 	"description": "Notion Connector",
 	"main": "main.js",
 	"scripts": {
