@@ -311,7 +311,6 @@ export default class NotionConnector {
 
 		const notionId = frontMatterHandler.get("notion-id", "")
 
-        console.log(notionId)
         if (!notionId) {
             return;
         }

@@ -34,7 +34,8 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		// Add icon to the side bar
 		this.addRibbonIcon('notion', 'Notion Plugin', (evt: MouseEvent) => {
-			this.app.commands.executeCommandById('obsidian-notion-connector:sync-current-file-with-notion');
+			new DownloadFromNotionModal(this.app, 
+				(notionID, fileName) => this.notionConnector.downloadFromNotion(notionID, fileName)).open();
 		});
 
 		// This adds a simple command that can be triggered anywhere
