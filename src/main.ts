@@ -1,4 +1,4 @@
-import { addIcon, App, Editor, MarkdownView, Modal, normalizePath, Plugin, TFile } from 'obsidian';
+import { addIcon, normalizePath, Plugin, TFile } from 'obsidian';
 
 import { DEFAULT_SETTINGS, NotionConnectorSettings } from "./settings/settings"
 import { NotionConnectorSettingTab } from "./settings/notionConnectorSettingsTab"

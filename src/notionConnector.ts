@@ -1,7 +1,7 @@
 import { Client, isFullDatabase, isFullPage, isFullUser } from "@notionhq/client";
-import { DatabaseObjectResponse, PageObjectResponse, SelectPropertyResponse } from "@notionhq/client/build/src/api-endpoints";
+import { DatabaseObjectResponse, PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { NotionToMarkdown } from "notion-to-md";
-import { App, Editor, Modal, TAbstractFile, TFile } from "obsidian";
+import { App, TAbstractFile, TFile } from "obsidian";
 import { FrontMatterHandler } from "./frontMatterHandler";
 import { fetchUsingObsidianRequest } from "./helpers";
 import MsgModal from "./msgModal";
@@ -40,7 +40,7 @@ export default class NotionConnector {
         }
     }
 
-	formatOptions(options: SelectPropertyResponse[]) {
+	formatOptions(options: Record<string, unknown>[]) {
 		return ("    " 
             + options.map(o => `- { label: "${o.name}", backgroundColor: "${o.color}" }`)
                      .join("\n    "))
@@ -225,14 +225,14 @@ export default class NotionConnector {
         msgModal.open()
 
 		// retrieve page or db with the given id
-		let notionItem = undefined;
+		let notionItem = null
 		
         let content = ""
 
 		if (!notionType || notionType == "page") {
 			notionItem = await this.notion.pages.retrieve({page_id: notionId})
 				.catch(reason => {
-					return undefined;
+					return null;
 				})
 
 			if (notionItem && isFullPage(notionItem)) {
@@ -261,42 +261,40 @@ export default class NotionConnector {
 			return
 		}
 
-        // first, replace the content of the file
+        // now, replace the content of the file
         await this.app.vault.modify(file, content)
-            .then(() => {
-                if (!notionItem)
-                    return
-
-                const frontMatterHandler = new FrontMatterHandler(this.app.vault, this.app.metadataCache, file)
-
-                const notionLastUpdate = 'last_edited_time' in notionItem 
-                    ? window.moment(notionItem['last_edited_time'], 'YYYY-MM-DDTHH:mm:ss:SSS[Z]')
-                    : undefined
         
-                const syncTime = window.moment()
-        
-                //console.log((notionLastUpdate && notionLastUpdate < syncTime) ? "in sync" : "update needed")
-        
-                notionType = notionItem["object"]
-                frontMatterHandler.set("notion-id", notionId)
-                frontMatterHandler.set("notion-type", notionType ?? "")
-                frontMatterHandler.set("notion-last-sync-time", syncTime.format('YYYY-MM-DDTHH:mm:ss:SSS[Z]'))
-        
-                if (notionType == "database") {
-                    frontMatterHandler.set("database-plugin", "basic")
-                }
+        // and take care of the frontmatter
+        const frontMatterHandler = new FrontMatterHandler(this.app.vault, this.app.metadataCache, file)
 
-                // add banner, if appropriate
-                if ("cover" in notionItem) {
-                    frontMatterHandler.set("banner", `"${notionItem.cover?.external?.url}"`)
-                }
+        /*
+        const notionLastUpdate = 'last_edited_time' in notionItem 
+            ? window.moment(notionItem['last_edited_time'], 'YYYY-MM-DDTHH:mm:ss:SSS[Z]')
+            : undefined
+        */
+        
+        const syncTime = window.moment()
 
-                frontMatterHandler.apply()
-            })
-            .then(() => {
-                msgModal.close()
-                new MsgModal(this.app, "Notion Download finished!").open()
-            })
+        //console.log((notionLastUpdate && notionLastUpdate < syncTime) ? "in sync" : "update needed")
+
+        notionType = notionItem["object"]
+        frontMatterHandler.set("notion-id", notionId)
+        frontMatterHandler.set("notion-type", notionType ?? "")
+        frontMatterHandler.set("notion-last-sync-time", syncTime.format('YYYY-MM-DDTHH:mm:ss:SSS[Z]'))
+
+        if (notionType == "database") {
+            frontMatterHandler.set("database-plugin", "basic")
+        }
+
+        // add banner, if appropriate
+        if ("cover" in notionItem) {
+            frontMatterHandler.set("banner", `"${(notionItem as any).cover.external?.url}"`)
+        }
+
+        frontMatterHandler.apply()
+        msgModal.close()
+        new MsgModal(this.app, "Notion Download finished!").open()
+
     }
    
 	async syncCurrentPageWithNotion() {
