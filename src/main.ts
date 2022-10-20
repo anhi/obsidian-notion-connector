@@ -273,6 +273,11 @@ export default class NotionConnectorPlugin extends Plugin {
 		frontMatterHandler.set("notion-type", notionType)
 		frontMatterHandler.set("notion-last-sync-time", syncTime.format('YYYY-MM-DDTHH:mm:ss:SSS[Z]'))
 
+		// add banner, if appropriate
+		if ("cover" in notionItem) {
+			frontMatterHandler.set("banner", `"${notionItem.cover?.external?.url}"`)
+		}
+
 		frontMatterHandler.apply()
 	
 		//console.log(notionItem)
