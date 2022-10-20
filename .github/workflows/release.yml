@@ -30,8 +30,7 @@ jobs:
     - name: Package
       run: |
         mkdir ${{ github.event.repository.name }}
-        cp main.js manifest.json styles.css README.md ${{ github.event.repository.name }}
-        cp -r images ${{ github.event.repository.name }}
+        cp main.js manifest.json styles.css README.md images/Notion-logo.svg ${{ github.event.repository.name }}
         zip -r ${{ github.event.repository.name }}.zip ${{ github.event.repository.name }}
     # Create the release on github
     - name: Create Release
@@ -98,6 +97,6 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} 
         asset_path: ./images/Notion-logo.svg
-        asset_name: images/Notion-logo.svg
+        asset_name: Notion-logo.svg
         asset_content_type: image/svg+xml
     # TODO: release notes???

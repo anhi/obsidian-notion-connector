@@ -27,7 +27,7 @@ export default class NotionConnectorPlugin extends Plugin {
 
 		this.notionConnector = new NotionConnector(this.settings.apiToken, this.app)
 
-		this.logoPath = normalizePath(`${this.app.vault.configDir}/plugins/${this.manifest.id}/images`)
+		this.logoPath = normalizePath(`${this.app.vault.configDir}/plugins/${this.manifest.id}`)
 
 		await this.app.vault.adapter.read(`${this.logoPath}/Notion-logo.svg`)
 			.then((logo) => addIcon('notion', logo))
