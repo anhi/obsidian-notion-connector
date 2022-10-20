@@ -285,7 +285,12 @@ export default class NotionConnector {
                 if (notionType == "database") {
                     frontMatterHandler.set("database-plugin", "basic")
                 }
-        
+
+                // add banner, if appropriate
+                if ("cover" in notionItem) {
+                    frontMatterHandler.set("banner", `"${notionItem.cover?.external?.url}"`)
+                }
+
                 frontMatterHandler.apply()
             })
             .then(() => {
