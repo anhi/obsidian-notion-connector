@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-notion-connector",
 	"name": "Notion Connector",
-	"version": "1.0.0",
+	"version": "0.9.1",
 	"minAppVersion": "0.15.0",
 	"description": "This plugin connects Obsidian to Notion through the official SDK.",
 	"author": "Obsidian",
