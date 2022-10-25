@@ -7,6 +7,7 @@ import { fetchUsingObsidianRequest } from "./helpers";
 import MsgModal from "./msgModal";
 
 export default class NotionConnector {
+
     notion: Client
 	n2m:    NotionToMarkdown
     app:    App
@@ -15,16 +16,20 @@ export default class NotionConnector {
         this.app = app
 
         // Initializing the Notion client
+		this.setAPIToken(apiToken);
+    }
+
+	setAPIToken(apiToken: string) {
 		this.notion = new Client({
 			auth: apiToken,
 			fetch: fetchUsingObsidianRequest,
-		})
+		});
 
 		// set up notion to markdown converter
-		this.n2m = new NotionToMarkdown({ 
-			notionClient: this.notion 
+		this.n2m = new NotionToMarkdown({
+			notionClient: this.notion
 		});
-    }
+	}
 
     isTFile(file: TFile | TAbstractFile): file is TFile {
         return (file as TFile).stat !== undefined;

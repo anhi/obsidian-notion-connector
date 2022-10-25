@@ -74,5 +74,7 @@ export default class NotionConnectorPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+
+		this.notionConnector.setAPIToken(this.settings.apiToken)
 	}
 }
